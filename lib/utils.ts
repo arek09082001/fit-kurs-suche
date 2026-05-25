@@ -1,38 +1,27 @@
-import { format, parseISO, addHours, startOfDay, isSameDay } from "date-fns";
+import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import type { Course, GroupedSession } from "./types";
 import { BRANCH_BY_ID } from "./constants";
 
-// Germany is UTC+2 in summer (CEST, May–Oct), UTC+1 in winter (CET)
-// We dynamically detect the offset for any given date
-function getGermanOffset(utcDate: Date): number {
-  // CEST runs last Sunday in March → last Sunday in October
-  const year = utcDate.getUTCFullYear();
+const BERLIN_TZ = "Europe/Berlin";
 
-  // Last Sunday in March
-  const marchEnd = new Date(Date.UTC(year, 2, 31));
-  const dstStart = new Date(
-    Date.UTC(year, 2, 31 - ((marchEnd.getUTCDay() + 7) % 7))
-  );
-  // Last Sunday in October
-  const octoberEnd = new Date(Date.UTC(year, 9, 31));
-  const dstEnd = new Date(
-    Date.UTC(year, 9, 31 - ((octoberEnd.getUTCDay() + 7) % 7))
-  );
-
-  return utcDate >= dstStart && utcDate < dstEnd ? 2 : 1;
+/**
+ * Returns the calendar date in Europe/Berlin as an ISO date string "yyyy-MM-dd".
+ * Accepts a UTC ISO string or a Date object.
+ */
+function getGermanDayKey(input: string | Date): string {
+  const date = typeof input === "string" ? new Date(input) : input;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: BERLIN_TZ }).format(date);
 }
 
-/** Convert a UTC ISO string to the German local Date object */
-export function toGermanTime(utcString: string): Date {
-  const utcDate = parseISO(utcString);
-  const offset = getGermanOffset(utcDate);
-  return addHours(utcDate, offset);
-}
-
-/** Format "HH:mm" in German local time */
+/** Format "HH:mm" in Europe/Berlin time (handles CEST/CET automatically) */
 export function formatTime(utcString: string): string {
-  return format(toGermanTime(utcString), "HH:mm");
+  return new Intl.DateTimeFormat("de-DE", {
+    timeZone: BERLIN_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(utcString));
 }
 
 /** Format "EEE, dd.MM." (e.g. "Mo, 26.05.") in German */
@@ -64,9 +53,12 @@ export function extractUniqueTitles(courses: Course[]): string[] {
 export function extractWeekDays(courses: Course[]): Date[] {
   const seen = new Map<string, Date>();
   for (const c of courses) {
-    const localDate = toGermanTime(c.startDateTime);
-    const key = format(startOfDay(localDate), "yyyy-MM-dd");
-    if (!seen.has(key)) seen.set(key, startOfDay(localDate));
+    const key = getGermanDayKey(c.startDateTime); // "yyyy-MM-dd"
+    if (!seen.has(key)) {
+      // Store as noon UTC so date-fns format() always shows the correct day
+      // regardless of whether the runtime is in UTC or a European timezone
+      seen.set(key, new Date(`${key}T12:00:00Z`));
+    }
   }
   return Array.from(seen.values()).sort((a, b) => a.getTime() - b.getTime());
 }
@@ -81,11 +73,11 @@ export function groupSessionsForDay(
   titleFilter: string,
   day: Date
 ): GroupedSession[] {
-  // Filter by title and by day (German local time)
+  // Filter by title and by day (Europe/Berlin calendar date)
+  const dayKey = getGermanDayKey(day);
   const filtered = courses.filter((c) => {
     if (c.title !== titleFilter) return false;
-    const localDate = toGermanTime(c.startDateTime);
-    return isSameDay(localDate, day);
+    return getGermanDayKey(c.startDateTime) === dayKey;
   });
 
   // Group by exact startDateTime (UTC canonical)
