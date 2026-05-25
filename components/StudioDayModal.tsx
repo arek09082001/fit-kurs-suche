@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Branch, Course } from "@/lib/types";
 import { formatTime, formatDayLong, capitalize, getStudioDayCourses } from "@/lib/utils";
 
@@ -12,6 +12,8 @@ interface StudioDayModalProps {
   onClose: () => void;
 }
 
+const DRAG_CLOSE_THRESHOLD = 120;
+
 export default function StudioDayModal({
   branch,
   day,
@@ -19,6 +21,39 @@ export default function StudioDayModal({
   selectedTitle,
   onClose,
 }: StudioDayModalProps) {
+  const [dragOffsetY, setDragOffsetY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartYRef = useRef<number | null>(null);
+  const dragOffsetYRef = useRef(0);
+
+  const beginDrag = (clientY: number) => {
+    dragStartYRef.current = clientY;
+    dragOffsetYRef.current = 0;
+    setDragOffsetY(0);
+    setIsDragging(true);
+  };
+
+  const updateDrag = (clientY: number) => {
+    if (dragStartYRef.current === null) return;
+    const nextOffset = Math.max(0, clientY - dragStartYRef.current);
+    dragOffsetYRef.current = nextOffset;
+    setDragOffsetY(nextOffset);
+  };
+
+  const endDrag = () => {
+    if (dragStartYRef.current === null) return;
+    setIsDragging(false);
+    dragStartYRef.current = null;
+
+    if (dragOffsetYRef.current > DRAG_CLOSE_THRESHOLD) {
+      onClose();
+      return;
+    }
+
+    dragOffsetYRef.current = 0;
+    setDragOffsetY(0);
+  };
+
   // Close on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -47,9 +82,33 @@ export default function StudioDayModal({
       />
 
       {/* Bottom sheet */}
-      <div className="relative bg-zinc-900 rounded-t-3xl max-h-[82dvh] flex flex-col animate-slide-up">
+      <div
+        className="relative bg-zinc-900 rounded-t-3xl max-h-[82dvh] flex flex-col animate-slide-up transition-transform duration-200 will-change-transform"
+        style={{
+          transform: `translateY(${dragOffsetY}px)`,
+          transitionDuration: isDragging ? "0ms" : undefined,
+        }}
+      >
         {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
+        <div
+          className="flex justify-center pt-3 pb-1 shrink-0 touch-none cursor-grab active:cursor-grabbing"
+          onPointerDown={(e) => {
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            beginDrag(e.clientY);
+          }}
+          onPointerMove={(e) => {
+            if (!isDragging) return;
+            updateDrag(e.clientY);
+          }}
+          onPointerUp={(e) => {
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+            endDrag();
+          }}
+          onPointerCancel={endDrag}
+        >
           <div className="w-10 h-1 bg-zinc-700 rounded-full" />
         </div>
 
@@ -68,13 +127,6 @@ export default function StudioDayModal({
                 {capitalize(formatDayLong(day))}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="text-zinc-500 hover:text-white transition-colors p-1.5 -mr-1 shrink-0 text-lg leading-none"
-              aria-label="Schließen"
-            >
-              ✕
-            </button>
           </div>
           <p className="text-xs text-zinc-500 mt-2.5">
             {dayCourses.length === 0

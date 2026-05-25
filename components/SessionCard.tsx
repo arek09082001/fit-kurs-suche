@@ -13,6 +13,12 @@ export default function SessionCard({ session, onStudioClick }: SessionCardProps
   const endTime = formatTime(session.endDateTime);
   const isCancelled = session.cancelled;
   const isSpecial = session.special;
+  const courseByBranchId = new Map<number, (typeof session.courses)[number]>();
+  for (const c of session.courses) {
+    if (!courseByBranchId.has(c.branchId)) {
+      courseByBranchId.set(c.branchId, c);
+    }
+  }
 
   return (
     <div
@@ -66,45 +72,46 @@ export default function SessionCard({ session, onStudioClick }: SessionCardProps
               ✦ Special
             </span>
           )}
-          {session.courses.map((c) =>
-            c.bookable ? (
-              <span
-                key={c.id}
-                className="text-[11px] font-semibold bg-emerald-900/40 text-emerald-400 border border-emerald-700/50 rounded-full px-2.5 py-0.5"
-              >
-                Buchbar
-                {c.availableParticipants !== null &&
-                  ` · ${c.availableParticipants} Plätze`}
-              </span>
-            ) : null
-          )}
         </div>
 
         {/* Studio badges */}
         <div className="flex flex-wrap gap-1.5">
-          {session.branches.map((branch) => (
-            <button
-              key={branch.id}
-              onClick={onStudioClick ? () => onStudioClick(branch.id) : undefined}
-              className={[
-                "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150",
-                onStudioClick
-                  ? "cursor-pointer active:scale-95 hover:brightness-125"
-                  : "cursor-default",
-              ].join(" ")}
-              style={{
-                backgroundColor: branch.colorHex + "20",
-                border: `1px solid ${branch.colorHex}50`,
-                color: branch.colorHex,
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ backgroundColor: branch.colorHex }}
-              />
-              {branch.name}
-            </button>
-          ))}
+          {session.branches.map((branch) => {
+            const branchCourse = courseByBranchId.get(branch.id);
+            const showAvailability =
+              !!branchCourse?.bookable &&
+              branchCourse.availableParticipants !== null &&
+              !isCancelled;
+
+            return (
+              <button
+                key={branch.id}
+                onClick={onStudioClick ? () => onStudioClick(branch.id) : undefined}
+                className={[
+                  "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150",
+                  onStudioClick
+                    ? "cursor-pointer active:scale-95 hover:brightness-125"
+                    : "cursor-default",
+                ].join(" ")}
+                style={{
+                  backgroundColor: branch.colorHex + "20",
+                  border: `1px solid ${branch.colorHex}50`,
+                  color: branch.colorHex,
+                }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: branch.colorHex }}
+                />
+                {branch.name}
+                {showAvailability && (
+                  <span className="ml-1 rounded-full border border-emerald-600/50 bg-emerald-900/40 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                    {branchCourse.availableParticipants}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Room */}
