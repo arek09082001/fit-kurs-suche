@@ -5,9 +5,10 @@ import type { GroupedSession } from "@/lib/types";
 
 interface SessionCardProps {
   session: GroupedSession;
+  onStudioClick?: (branchId: number) => void;
 }
 
-export default function SessionCard({ session }: SessionCardProps) {
+export default function SessionCard({ session, onStudioClick }: SessionCardProps) {
   const startTime = formatTime(session.startDateTime);
   const endTime = formatTime(session.endDateTime);
   const isCancelled = session.cancelled;
@@ -82,9 +83,15 @@ export default function SessionCard({ session }: SessionCardProps) {
         {/* Studio badges */}
         <div className="flex flex-wrap gap-1.5">
           {session.branches.map((branch) => (
-            <span
+            <button
               key={branch.id}
-              className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold"
+              onClick={onStudioClick ? () => onStudioClick(branch.id) : undefined}
+              className={[
+                "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150",
+                onStudioClick
+                  ? "cursor-pointer active:scale-95 hover:brightness-125"
+                  : "cursor-default",
+              ].join(" ")}
               style={{
                 backgroundColor: branch.colorHex + "20",
                 border: `1px solid ${branch.colorHex}50`,
@@ -96,7 +103,7 @@ export default function SessionCard({ session }: SessionCardProps) {
                 style={{ backgroundColor: branch.colorHex }}
               />
               {branch.name}
-            </span>
+            </button>
           ))}
         </div>
 

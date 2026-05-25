@@ -9,6 +9,7 @@ interface CourseScheduleProps {
   selectedDay: Date | null;
   selectedTitle: string;
   loading?: boolean;
+  onStudioClick?: (branchId: number) => void;
 }
 
 function SkeletonCard() {
@@ -34,6 +35,7 @@ export default function CourseSchedule({
   selectedDay,
   selectedTitle,
   loading = false,
+  onStudioClick,
 }: CourseScheduleProps) {
   if (loading) {
     return (
@@ -66,6 +68,7 @@ export default function CourseSchedule({
         <SessionCard
           key={`${session.startDateTime}-${session.branches.map((b) => b.id).join("-")}`}
           session={session}
+          onStudioClick={onStudioClick}
         />
       ))}
     </div>

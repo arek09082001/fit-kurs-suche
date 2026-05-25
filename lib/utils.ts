@@ -129,3 +129,48 @@ export function countStudiosForTitle(courses: Course[], title: string): number {
 export function countSessionsForTitle(courses: Course[], title: string): number {
   return courses.filter((c) => c.title === title).length;
 }
+
+/**
+ * Returns all courses for a specific branch on a given day, sorted by start time.
+ * Used by the studio-day popup to show the full day programme of one studio.
+ */
+export function getStudioDayCourses(
+  courses: Course[],
+  branchId: number,
+  day: Date
+): Course[] {
+  const dayKey = getGermanDayKey(day);
+  return courses
+    .filter(
+      (c) =>
+        c.branchId === branchId &&
+        getGermanDayKey(c.startDateTime) === dayKey
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()
+    );
+}
+
+/**
+ * Returns a map of dayKey ("yyyy-MM-dd" Berlin time) → number of distinct
+ * session slots for a given title on that day.
+ * Multiple studios at the same start time count as ONE slot.
+ */
+export function countSessionsPerDay(
+  courses: Course[],
+  title: string
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  const seenSlots = new Set<string>();
+  for (const c of courses) {
+    if (c.title !== title) continue;
+    const dayKey = getGermanDayKey(c.startDateTime);
+    const slotKey = `${dayKey}|${c.startDateTime}`;
+    if (!seenSlots.has(slotKey)) {
+      seenSlots.add(slotKey);
+      counts[dayKey] = (counts[dayKey] ?? 0) + 1;
+    }
+  }
+  return counts;
+}

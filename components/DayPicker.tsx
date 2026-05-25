@@ -9,9 +9,10 @@ interface DayPickerProps {
   days: Date[];
   selectedDay: Date | null;
   onSelect: (day: Date) => void;
+  sessionCounts?: Record<string, number>;
 }
 
-export default function DayPicker({ days, selectedDay, onSelect }: DayPickerProps) {
+export default function DayPicker({ days, selectedDay, onSelect, sessionCounts }: DayPickerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
@@ -31,14 +32,18 @@ export default function DayPicker({ days, selectedDay, onSelect }: DayPickerProp
   return (
     <div ref={scrollRef} className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
       {days.map((day) => {
+        const dayKey = format(day, "yyyy-MM-dd");
         const active =
           selectedDay !== null &&
-          format(day, "yyyy-MM-dd") === format(selectedDay, "yyyy-MM-dd");
+          dayKey === format(selectedDay, "yyyy-MM-dd");
         const today = isToday(day);
+        const count = sessionCounts?.[dayKey] ?? -1;
+        const hasFilter = sessionCounts !== undefined;
+        const isEmpty = hasFilter && count === 0;
 
         return (
           <button
-            key={format(day, "yyyy-MM-dd")}
+            key={dayKey}
             ref={active ? activeRef : null}
             onClick={() => onSelect(day)}
             className={[
@@ -48,15 +53,26 @@ export default function DayPicker({ days, selectedDay, onSelect }: DayPickerProp
                 : today
                 ? "bg-zinc-700 text-white border border-red-600/50"
                 : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700",
+              isEmpty ? "opacity-30" : "",
             ].join(" ")}
           >
             <span className="text-xs uppercase tracking-wide opacity-75">
               {format(day, "EEE", { locale: de })}
             </span>
             <span className="text-lg font-bold leading-tight">{format(day, "dd")}</span>
-            {today && (
+            {today && !isEmpty && (
               <span className="text-[10px] uppercase tracking-widest text-red-400 mt-0.5">
                 Heute
+              </span>
+            )}
+            {hasFilter && count > 0 && (
+              <span
+                className={[
+                  "text-[9px] font-bold mt-0.5 leading-none",
+                  active ? "text-red-200" : "text-red-400",
+                ].join(" ")}
+              >
+                {count}×
               </span>
             )}
           </button>

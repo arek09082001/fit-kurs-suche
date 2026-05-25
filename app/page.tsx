@@ -1,21 +1,24 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import useSWR from "swr";
-import { isToday } from "date-fns";
+import { isToday, format } from "date-fns";
 
 import CourseSelector from "@/components/CourseSelector";
 import DayPicker from "@/components/DayPicker";
 import CourseSchedule from "@/components/CourseSchedule";
 import StudioLegend from "@/components/StudioLegend";
+import StudioDayModal from "@/components/StudioDayModal";
 
 import type { Course } from "@/lib/types";
+import { BRANCHES, BRANCH_BY_ID } from "@/lib/constants";
 import {
   extractUniqueTitles,
   extractWeekDays,
   groupSessionsForDay,
   countSessionsForTitle,
   countStudiosForTitle,
+  countSessionsPerDay,
 } from "@/lib/utils";
 
 const fetcher = (url: string) =>
@@ -38,17 +41,55 @@ export default function HomePage() {
 
   const [selectedTitle, setSelectedTitle] = useState("");
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [activeStudioIds, setActiveStudioIds] = useState<Set<number>>(
+    () => new Set(BRANCHES.map((b) => b.id))
+  );
+  const [studioPopupBranchId, setStudioPopupBranchId] = useState<number | null>(null);
 
+  const toggleStudio = useCallback((id: number) => {
+    setActiveStudioIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // On first data load: auto-select today (or first available day)
   useEffect(() => {
     if (days.length === 0 || selectedDay !== null) return;
     const today = days.find((d) => isToday(d));
     setSelectedDay(today ?? days[0]);
   }, [days, selectedDay]);
 
+  // When a course is selected: jump to today (or first upcoming day with sessions)
+  const handleTitleChange = useCallback(
+    (title: string) => {
+      setSelectedTitle(title);
+      if (!title || days.length === 0) return;
+      const counts = countSessionsPerDay(courses, title);
+      const todayKey = format(new Date(), "yyyy-MM-dd");
+      const firstAvailable = days.find((d) => {
+        const key = format(d, "yyyy-MM-dd");
+        return key >= todayKey && (counts[key] ?? 0) > 0;
+      });
+      if (firstAvailable) setSelectedDay(firstAvailable);
+    },
+    [courses, days]
+  );
+
   const sessions = useMemo(() => {
     if (!selectedTitle || !selectedDay) return [];
-    return groupSessionsForDay(courses, selectedTitle, selectedDay);
-  }, [courses, selectedTitle, selectedDay]);
+    const all = groupSessionsForDay(courses, selectedTitle, selectedDay);
+    // Filter to only show branches the user hasn't toggled off
+    return all
+      .map((s) => ({
+        ...s,
+        branches: s.branches.filter((b) => activeStudioIds.has(b.id)),
+        courses: s.courses.filter((c) => activeStudioIds.has(c.branchId)),
+      }))
+      .filter((s) => s.branches.length > 0);
+  }, [courses, selectedTitle, selectedDay, activeStudioIds]);
 
   const totalSessions = useMemo(
     () => (selectedTitle ? countSessionsForTitle(courses, selectedTitle) : 0),
@@ -58,6 +99,12 @@ export default function HomePage() {
     () => (selectedTitle ? countStudiosForTitle(courses, selectedTitle) : 0),
     [courses, selectedTitle]
   );
+
+  const sessionsPerDay = useMemo(() => {
+    if (!selectedTitle) return undefined;
+    const activeCourses = courses.filter((c) => activeStudioIds.has(c.branchId));
+    return countSessionsPerDay(activeCourses, selectedTitle);
+  }, [courses, selectedTitle, activeStudioIds]);
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
@@ -87,7 +134,7 @@ export default function HomePage() {
         <CourseSelector
           titles={titles}
           selected={selectedTitle}
-          onChange={setSelectedTitle}
+          onChange={handleTitleChange}
           loading={isLoading}
         />
 
@@ -105,14 +152,14 @@ export default function HomePage() {
         {selectedTitle && (
           <div>
             <p className="text-[11px] uppercase tracking-widest text-zinc-600 mb-2 font-medium">Studios</p>
-            <StudioLegend />
+            <StudioLegend activeStudioIds={activeStudioIds} onToggle={toggleStudio} />
           </div>
         )}
 
         {selectedTitle && days.length > 0 && (
           <div>
             <p className="text-[11px] uppercase tracking-widest text-zinc-600 mb-2 font-medium">Woche</p>
-            <DayPicker days={days} selectedDay={selectedDay} onSelect={setSelectedDay} />
+            <DayPicker days={days} selectedDay={selectedDay} onSelect={setSelectedDay} sessionCounts={sessionsPerDay} />
           </div>
         )}
 
@@ -124,6 +171,7 @@ export default function HomePage() {
               selectedDay={selectedDay}
               selectedTitle={selectedTitle}
               loading={isLoading}
+              onStudioClick={(branchId) => setStudioPopupBranchId(branchId)}
             />
           </div>
         )}
@@ -148,6 +196,21 @@ export default function HomePage() {
           </div>
         )}
       </main>
+
+      {/* ── Studio Day Modal ──────────────────────────────────── */}
+      {studioPopupBranchId !== null && selectedDay && (() => {
+        const branch = BRANCH_BY_ID[studioPopupBranchId];
+        if (!branch) return null;
+        return (
+          <StudioDayModal
+            branch={branch}
+            day={selectedDay}
+            courses={courses}
+            selectedTitle={selectedTitle}
+            onClose={() => setStudioPopupBranchId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
