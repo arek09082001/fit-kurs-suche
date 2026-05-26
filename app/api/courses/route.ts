@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
-import { BRANCHES } from "@/lib/constants";
+import { NextResponse, type NextRequest } from "next/server";
+import { DEFAULT_STUDIO_IDS } from "@/lib/studios";
+import { STUDIO_BY_ID } from "@/lib/studios";
 import type { Course } from "@/lib/types";
 
-export const revalidate = 60; // ISR: re-fetch from FitX every 60 seconds
+// No static ISR – the branch list varies per user request
+export const dynamic = "force-dynamic";
 
 /** Fetch one branch URL and return its payload, or [] on failure */
 async function fetchBranchUrl(url: string): Promise<Course[]> {
@@ -15,14 +17,23 @@ async function fetchBranchUrl(url: string): Promise<Course[]> {
   return json.payload ?? [];
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Fetch current week (no param) AND next week (?week=1) for every branch in
-    // parallel — same latency as before since all 16 requests run concurrently.
-    // Together they cover: last week + current week + next week.
-    const urls = BRANCHES.flatMap((branch) => [
-      `https://www.fitx.de/courses/${branch.id}`,
-      `https://www.fitx.de/courses/${branch.id}?week=1`,
+    // Parse ?branches=27,111,90,... — fall back to default IDs if absent
+    const param = request.nextUrl.searchParams.get("branches");
+    const branchIds: number[] = param
+      ? param
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => Number.isFinite(n) && n > 0 && STUDIO_BY_ID[n] !== undefined)
+      : DEFAULT_STUDIO_IDS;
+
+    const ids = branchIds.length > 0 ? branchIds : DEFAULT_STUDIO_IDS;
+
+    // Fetch current week AND next week for every branch in parallel
+    const urls = ids.flatMap((id) => [
+      `https://www.fitx.de/courses/${id}`,
+      `https://www.fitx.de/courses/${id}?week=1`,
     ]);
     const results = await Promise.all(urls.map(fetchBranchUrl));
 

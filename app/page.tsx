@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useSWR from "swr";
 import { isToday, format } from "date-fns";
+import Link from "next/link";
 
 import CourseSelector from "@/components/CourseSelector";
 import DayPicker from "@/components/DayPicker";
@@ -11,7 +12,8 @@ import StudioLegend from "@/components/StudioLegend";
 import StudioDayModal from "@/components/StudioDayModal";
 
 import type { Course } from "@/lib/types";
-import { BRANCHES, BRANCH_BY_ID } from "@/lib/constants";
+import { BRANCH_BY_ID } from "@/lib/constants";
+import { useStudioStore } from "@/lib/store";
 import {
   extractUniqueTitles,
   extractWeekDays,
@@ -28,8 +30,21 @@ const fetcher = (url: string) =>
   });
 
 export default function HomePage() {
+  const selectedStudioIds = useStudioStore((s) => s.selectedStudioIds);
+  const activeStudioIds = useStudioStore((s) => s.activeStudioIds);
+  const toggleActive = useStudioStore((s) => s.toggleActive);
+
+  // Build SWR key from selected studios — refetches automatically when list changes
+  const apiUrl = useMemo(
+    () =>
+      selectedStudioIds.length > 0
+        ? `/api/courses?branches=${selectedStudioIds.join(",")}`
+        : null,
+    [selectedStudioIds]
+  );
+
   const { data, error, isLoading } = useSWR<{ courses: Course[] }>(
-    "/api/courses",
+    apiUrl,
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -41,19 +56,13 @@ export default function HomePage() {
 
   const [selectedTitle, setSelectedTitle] = useState("");
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  const [activeStudioIds, setActiveStudioIds] = useState<Set<number>>(
-    () => new Set(BRANCHES.map((b) => b.id))
-  );
   const [studioPopupBranchId, setStudioPopupBranchId] = useState<number | null>(null);
 
+  const activeStudioIdSet = useMemo(() => new Set(activeStudioIds), [activeStudioIds]);
+
   const toggleStudio = useCallback((id: number) => {
-    setActiveStudioIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+    toggleActive(id);
+  }, [toggleActive]);
 
   // On first data load: auto-select today (or first available day)
   useEffect(() => {
@@ -85,11 +94,11 @@ export default function HomePage() {
     return all
       .map((s) => ({
         ...s,
-        branches: s.branches.filter((b) => activeStudioIds.has(b.id)),
-        courses: s.courses.filter((c) => activeStudioIds.has(c.branchId)),
+        branches: s.branches.filter((b) => activeStudioIdSet.has(b.id)),
+        courses: s.courses.filter((c) => activeStudioIdSet.has(c.branchId)),
       }))
       .filter((s) => s.branches.length > 0);
-  }, [courses, selectedTitle, selectedDay, activeStudioIds]);
+  }, [courses, selectedTitle, selectedDay, activeStudioIdSet]);
 
   const totalSessions = useMemo(
     () => (selectedTitle ? countSessionsForTitle(courses, selectedTitle) : 0),
@@ -102,9 +111,9 @@ export default function HomePage() {
 
   const sessionsPerDay = useMemo(() => {
     if (!selectedTitle) return undefined;
-    const activeCourses = courses.filter((c) => activeStudioIds.has(c.branchId));
+    const activeCourses = courses.filter((c) => activeStudioIdSet.has(c.branchId));
     return countSessionsPerDay(activeCourses, selectedTitle);
-  }, [courses, selectedTitle, activeStudioIds]);
+  }, [courses, selectedTitle, activeStudioIdSet]);
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
@@ -117,8 +126,18 @@ export default function HomePage() {
           </div>
           <div className="h-5 w-px bg-zinc-700" />
           <h1 className="text-sm font-semibold text-zinc-300 tracking-wide">Kurs-Finder</h1>
+          <Link
+            href="/studios"
+            className="ml-auto p-1.5 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all duration-200"
+            title="Studios konfigurieren"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+            </svg>
+          </Link>
           {isLoading && (
-            <div className="ml-auto flex items-center gap-1.5 text-xs text-zinc-500">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-500">
               <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-pulse" />
               Laden…
             </div>
@@ -152,7 +171,7 @@ export default function HomePage() {
         {selectedTitle && (
           <div>
             <p className="text-[11px] uppercase tracking-widest text-zinc-600 mb-2 font-medium">Studios</p>
-            <StudioLegend activeStudioIds={activeStudioIds} onToggle={toggleStudio} />
+            <StudioLegend activeStudioIds={activeStudioIdSet} onToggle={toggleStudio} selectedStudioIds={selectedStudioIds} />
           </div>
         )}
 
